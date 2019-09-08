@@ -16,11 +16,23 @@ final class RocksDBCache[F[_], K, V] private[RocksDBCache] (
     extends Cache[F, K, V] {
   import RocksDBCache.RocksDBCacheItem
 
-  def delete(k: K): F[Unit] = rocks.remove(k)
+  def delete(k: K): F[Unit] =
+    rocks
+      .remove(k)
+      .flatTap(_ => onDelete(k))
 
-  def insert(k: K, v: V): F[Unit] = rocks.put(k, v)
+  def insert(k: K, v: V): F[Unit] =
+    rocks
+      .put(k, v)
+      .flatTap(_ => onInsert(k, v))
 
-  def lookup(k: K): F[Option[V]] = rocks.get(k)
+  def lookup(k: K): F[Option[V]] =
+    rocks
+      .get(k)
+      .flatTap {
+        case Some(value) => onCacheHit(k, value)
+        case None        => onCacheMiss(k)
+      }
 
   def withOnCacheHit(onCacheHitNew: (K, V) => F[Unit]): RocksDBCache[F, K, V] =
     new RocksDBCache[F, K, V](
