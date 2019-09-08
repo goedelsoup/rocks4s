@@ -63,6 +63,12 @@ final class RocksDB[F[_]: Sync] private (client: JavaRocksDB) {
       v <- v.traverse(bs => valueDecoder.decode(Stream.emits(bs)))
     } yield v
 
+  def getP[K, V](
+    implicit keyEncoder: Encoder[F, K],
+    valueDecoder: Decoder[F, V]
+  ): Pipe[F, K, Option[V]] =
+    in => in.evalMap(k => get(k))
+
   def latestSequenceNumber: F[Long] =
     F.delay(client.getLatestSequenceNumber())
 
@@ -79,10 +85,21 @@ final class RocksDB[F[_]: Sync] private (client: JavaRocksDB) {
       _ <- F.delay(client.put(k, v))
     } yield ()
 
+  def putP[K, V](
+    implicit keyEncoder: Encoder[F, K],
+    valueEncoder: Encoder[F, V]
+  ): Pipe[F, (K, V), Unit] =
+    in => in.evalMap(kv => put(kv._1, kv._2))
+
   def remove[K](key: K)(
     implicit keyEncoder: Encoder[F, K]
   ): F[Unit] =
     keyEncoder.encode(key).compile.to[Array] >>= (k => F.delay(client.remove(k)))
+
+  def removeP[K](
+    implicit keyEncoder: Encoder[F, K]
+  ): Pipe[F, K, Unit] =
+    in => in.evalMap(k => remove(k))
 
   def snapshot: Resource[F, Snapshot] =
     Resource.make(
